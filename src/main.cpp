@@ -1,94 +1,79 @@
 #include "main.h"
 
-/**
- * A callback function for LLEMU's center button.
- *
- * When this callback is fired, it will toggle line 2 of the LCD text between
- * "I was pressed!" and nothing.
- */
-void on_center_button() {
-	static bool pressed = false;
-	pressed = !pressed;
-	if (pressed) {
-		pros::lcd::set_text(2, "I was pressed!");
-	} else {
-		pros::lcd::clear_line(2);
-	}
+// ============================================================================
+// 1. Describe your robot. This is the only part you have to change.
+// ============================================================================
+
+mechlib::Drive drive({
+    .left_ports = {-1, -2, -3},   // negative = reversed. Not sure? Press Y to run the setup check
+    .right_ports = {4, 5, 6},
+    .imu_port = 10,
+    .wheel_diameter = 3.25,       // inches
+    .gear_ratio = 0.75,           // wheel turns per motor turn. 36:48 = 0.75, direct drive = 1.0
+    .cartridge = pros::MotorGearset::blue,    // blue 600 RPM, green 200, red 100
+    .track_width = 12.0,          // inches, from the middle of the left wheels to the middle of the right
+    .control = mechlib::ControlMode::ARCADE,  // or TANK
+});
+
+pros::Controller master(pros::E_CONTROLLER_MASTER);
+
+// ============================================================================
+// 2. Write your autonomous routines.
+// ============================================================================
+
+void square() {
+  for (int i = 0; i < 4; i++) {
+    drive.move(24);  // forward 24 inches
+    drive.turn(90);  // turn right 90 degrees (negative turns left)
+  }
 }
 
-/**
- * Runs initialization code. This occurs as soon as the program is started.
- *
- * All other competition modes are blocked by initialize; it is recommended
- * to keep execution time for this mode under a few seconds.
- */
+void driveAndBack() {
+  drive.move(36);
+  drive.move(-36);  // negative inches drive backward
+}
+
+void slowAndTurnTo() {
+  drive.move(24, 2000, 50);  // 24 inches, give up after 2 seconds, at 50% speed
+  drive.turnTo(180);         // face the opposite way from where autonomous started
+  drive.move(24);
+}
+
+// ============================================================================
+// 3. The PROS competition functions.
+// ============================================================================
+
 void initialize() {
-	pros::lcd::initialize();
-	pros::lcd::set_text(1, "Hello PROS User!");
+  drive.initialize();  // calibrates the IMU: keep the robot still for 2 seconds
 
-	pros::lcd::register_btn1_cb(on_center_button);
+  // Pick a routine with the left and right buttons under the brain screen.
+  mechlib::auton::add("Square", square);
+  mechlib::auton::add("Drive and back", driveAndBack);
+  mechlib::auton::add("Slow, then turnTo", slowAndTurnTo);
+  mechlib::auton::initialize();
 }
 
-/**
- * Runs while the robot is in the disabled state of Field Management System or
- * the VEX Competition Switch, following either autonomous or opcontrol. When
- * the robot is enabled, this task will exit.
- */
 void disabled() {}
 
-/**
- * Runs after initialize(), and before autonomous when connected to the Field
- * Management System or the VEX Competition Switch. This is intended for
- * competition-specific initialization routines, such as an autonomous selector
- * on the LCD.
- *
- * This task will exit when the robot is enabled and autonomous or opcontrol
- * starts.
- */
 void competition_initialize() {}
 
-/**
- * Runs the user autonomous code. This function will be started in its own task
- * with the default priority and stack size whenever the robot is enabled via
- * the Field Management System or the VEX Competition Switch in the autonomous
- * mode. Alternatively, this function may be called in initialize or opcontrol
- * for non-competition testing purposes.
- *
- * If the robot is disabled or communications is lost, the autonomous task
- * will be stopped. Re-enabling the robot will restart the task, not re-start it
- * from where it left off.
- */
-void autonomous() {}
+void autonomous() {
+  drive.resetHeading();   // the way the robot faces now becomes heading 0
+  mechlib::auton::run();  // runs the routine picked on the brain screen
+}
 
-/**
- * Runs the operator control code. This function will be started in its own task
- * with the default priority and stack size whenever the robot is enabled via
- * the Field Management System or the VEX Competition Switch in the operator
- * control mode.
- *
- * If no competition control is connected, this function will run immediately
- * following initialize().
- *
- * If the robot is disabled or communications is lost, the
- * operator control task will be stopped. Re-enabling the robot will restart the
- * task, not resume it from where it left off.
- */
 void opcontrol() {
-	pros::Controller master(pros::E_CONTROLLER_MASTER);
-	pros::MotorGroup left_mg({1, -2, 3});    // Creates a motor group with forwards ports 1 & 3 and reversed port 2
-	pros::MotorGroup right_mg({-4, 5, -6});  // Creates a motor group with forwards port 5 and reversed ports 4 & 6
+  while (true) {
+    drive.driverControl(master);
 
+    // Practice tools. They only work when the robot is NOT connected to a
+    // field controller, so they can't go off by accident during a match.
+    if (!pros::competition::is_connected()) {
+      if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y)) drive.checkSetup();
+      if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) mechlib::runTuner(drive, master);
+      if (master.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A)) autonomous();
+    }
 
-	while (true) {
-		pros::lcd::print(0, "%d %d %d", (pros::lcd::read_buttons() & LCD_BTN_LEFT) >> 2,
-		                 (pros::lcd::read_buttons() & LCD_BTN_CENTER) >> 1,
-		                 (pros::lcd::read_buttons() & LCD_BTN_RIGHT) >> 0);  // Prints status of the emulated screen LCDs
-
-		// Arcade control scheme
-		int dir = master.get_analog(ANALOG_LEFT_Y);    // Gets amount forward/backward from left joystick
-		int turn = master.get_analog(ANALOG_RIGHT_X);  // Gets the turn left/right from right joystick
-		left_mg.move(dir - turn);                      // Sets left motor voltage
-		right_mg.move(dir + turn);                     // Sets right motor voltage
-		pros::delay(20);                               // Run for 20 ms then update
-	}
+    pros::delay(10);
+  }
 }

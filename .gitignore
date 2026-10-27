@@ -15,3 +15,11 @@ temp.log
 temp.errors
 *.ini
 .d/
+
+# template zips (attach these to a GitHub release instead)
+*.zip
+
+# simulator output (see sim/README.md)
+mechsim
+mechsim.exe
+sim_usd/
